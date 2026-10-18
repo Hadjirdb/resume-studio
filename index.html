@@ -12,20 +12,20 @@
   :root{
     --bg:#ecebe7; --panel:#ffffff; --ink:#2c1d36; --muted:#6f6879; --line:#d9d6d0;
     --btn:#2c1d36; --btn-ink:#ffffff; --btn2:#ffffff; --btn2-ink:#2c1d36;
-    --warn-bg:#fff4e3; --warn-ink:#8a4b00; --shadow:0 18px 50px rgba(44,29,54,.16);
+    --warn-bg:#fff4e3; --warn-ink:#8a4b00; --ok-bg:#eef3e2; --ok-ink:#46651a; --shadow:0 18px 50px rgba(44,29,54,.16);
     --focus:#605371;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       --bg:#1b1820; --panel:#26222d; --ink:#f1edf5; --muted:#a79fb3; --line:#3a3442;
       --btn:#f1edf5; --btn-ink:#1b1820; --btn2:#26222d; --btn2-ink:#f1edf5;
-      --warn-bg:#3a2a12; --warn-ink:#ffd699; --shadow:0 18px 50px rgba(0,0,0,.5);
+      --warn-bg:#3a2a12; --warn-ink:#ffd699; --ok-bg:#25301b; --ok-ink:#c6dd9a; --shadow:0 18px 50px rgba(0,0,0,.5);
     }
   }
   :root[data-theme="dark"]{
     --bg:#1b1820; --panel:#26222d; --ink:#f1edf5; --muted:#a79fb3; --line:#3a3442;
     --btn:#f1edf5; --btn-ink:#1b1820; --btn2:#26222d; --btn2-ink:#f1edf5;
-    --warn-bg:#3a2a12; --warn-ink:#ffd699; --shadow:0 18px 50px rgba(0,0,0,.5);
+    --warn-bg:#3a2a12; --warn-ink:#ffd699; --ok-bg:#25301b; --ok-ink:#c6dd9a; --shadow:0 18px 50px rgba(0,0,0,.5);
   }
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -37,15 +37,18 @@
   .brand{display:flex;flex-direction:column;gap:2px;min-width:0}
   .brand strong{font-size:14px;font-weight:700;letter-spacing:.01em}
   .brand span{font-size:12px;color:var(--muted)}
-  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .btn{appearance:none;border:1px solid var(--btn);background:var(--btn);color:var(--btn-ink);font:600 13px/1 inherit;padding:10px 14px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
   .btn.secondary{background:var(--btn2);color:var(--btn2-ink);border-color:var(--line)}
   .btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   .btn[disabled]{opacity:.6;cursor:progress}
   .btn svg{width:14px;height:14px}
   .stage{padding:24px 16px 64px;display:flex;flex-direction:column;align-items:center;gap:12px}
-  .notice{display:none;max-width:100%;background:var(--warn-bg);color:var(--warn-ink);font-size:12px;padding:8px 12px;border-radius:8px}
-  .notice.show{display:block}
+  .fit{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;padding:8px 12px;border-radius:999px;background:var(--ok-bg);color:var(--ok-ink);white-space:nowrap}
+  .fit-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+  .fit.over{background:var(--warn-bg);color:var(--warn-ink)}
+  .fit-show{appearance:none;border:0;background:transparent;color:inherit;font:inherit;text-decoration:underline;text-underline-offset:2px;padding:0;cursor:pointer}
+  .fit-show:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:2px}
   .page-wrap{position:relative;transform-origin:top left;box-shadow:var(--shadow);border-radius:2px}
   .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:var(--bg);font-size:13px;padding:10px 16px;border-radius:999px;transition:.25s;pointer-events:none;z-index:50;max-width:calc(100% - 32px)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -159,6 +162,8 @@
   .logo-add:hover{border-color:var(--accent);color:var(--accent)}
   .file{display:none}
 
+  .page .spill{background:rgba(214,69,69,.10)!important;box-shadow:0 0 0 1px rgba(214,69,69,.75)!important;border-radius:2px}
+  body.exporting .page .spill{background:transparent!important;box-shadow:none!important}
   body.exporting .no-export,body.exporting .rm,body.exporting .mv,body.exporting .add{display:none!important}
   body.exporting .page [contenteditable]{box-shadow:none!important;background:transparent!important}
   body.exporting .page [contenteditable]:empty::before{content:""}
@@ -167,7 +172,8 @@
   @media print{
     @page{size:A4;margin:0}
     body{background:#fff}
-    .toolbar,.notice,.toast,.picker,.no-export,.rm,.mv,.add{display:none!important}
+    .toolbar,.toast,.picker,.no-export,.rm,.mv,.add{display:none!important}
+    .page .spill{background:transparent!important;box-shadow:none!important}
     .stage{padding:0;display:block}
     .page-wrap{transform:scale(1.3345)!important;transform-origin:top left;box-shadow:none;width:595px!important;height:auto!important}
     .page [contenteditable]{box-shadow:none!important;background:transparent!important}
@@ -183,6 +189,7 @@
     <span>Click any text to edit · tap a section icon to recolor · tap the bars to set a skill level</span>
   </div>
   <div class="actions">
+    <div class="fit" id="fit" role="status" aria-live="polite"><span class="fit-dot" aria-hidden="true"></span><span id="fitText">Fits on 1 page</span><button class="fit-show" id="fitShow" type="button" hidden>Show me</button></div>
     <button class="btn secondary" id="btnReset" type="button">Start over</button>
     <button class="btn secondary" id="btnPrint" type="button">Print</button>
     <button class="btn" id="btnPdf" type="button">
@@ -193,7 +200,6 @@
 </header>
 
 <main class="stage">
-  <div class="notice" id="notice">Your content runs past one A4 page. Shorten a few lines, or the PDF will spill onto a second page.</div>
   <div class="page-wrap" id="wrap">
   <div class="page" id="page">
 
@@ -375,7 +381,7 @@
   var wrap = document.getElementById('wrap');
   var stage = document.querySelector('.stage');
   var picker = document.getElementById('picker');
-  var notice = document.getElementById('notice');
+  var fitEl = document.getElementById('fit'), fitText = document.getElementById('fitText'), fitShow = document.getElementById('fitShow');
   var toastEl = document.getElementById('toast');
   var STORE = 'resume-studio-v1';
   var BARS = 10, GREEN_FROM = 7;   /* 7+ bars = green, 1–6 = orange */
@@ -611,15 +617,50 @@
     wrap.style.height = (page.offsetHeight * scale) + 'px';
     wrap.style.marginRight = (PAGE_W * scale - PAGE_W) + 'px';
   }
+  /* ---------- one-page check ----------
+     Measures the layout the PDF will get (edit-only buttons hidden), finds every
+     line or row that ends past the A4 edge, highlights it, and reports the
+     result in the toolbar so it is visible wherever the user is scrolled. */
+  var SAFE = 12;   /* content must stay at least 12px (about 4mm) inside the paper edge */
+  var pages = 1;
+  function measureSpill(){
+    var pr = page.getBoundingClientRect(), k = (pr.width / PAGE_W) || 1;
+    var maxY = 0, spilled = [], wide = false;
+    page.querySelectorAll('[contenteditable], .skill, .sec-icon, .logo, .avatar, .timeline-end').forEach(function(el){
+      var r = null;
+      if (el.hasAttribute('contenteditable')){
+        var rg = document.createRange(); rg.selectNodeContents(el); r = rg.getBoundingClientRect();   /* the text itself, not the full-width block */
+      }
+      if (!r || (!r.width && !r.height)) r = el.getBoundingClientRect();
+      if (!r.width && !r.height) return;
+      var bottom = (r.bottom - pr.top) / k, right = (r.right - pr.left) / k;
+      if (bottom > maxY) maxY = bottom;
+      var overX = right > PAGE_W - SAFE;
+      if (overX) wide = true;
+      if (overX || bottom > PAGE_H - SAFE) spilled.push(el.closest('.skill, .logo') || el);
+    });
+    return { maxY: maxY, spilled: spilled, wide: wide };
+  }
   function checkOverflow(){
-    /* measure without the edit-only buttons, which never reach the PDF */
+    page.querySelectorAll('.spill').forEach(function(el){ el.classList.remove('spill'); });
     var wasExporting = document.body.classList.contains('exporting');
     document.body.classList.add('exporting');
-    var over = page.scrollHeight > PAGE_H + 1;
+    var m = measureSpill();
     if (!wasExporting) document.body.classList.remove('exporting');
-    notice.classList.toggle('show', over);
+    pages = m.maxY > PAGE_H - SAFE ? Math.max(2, Math.ceil((m.maxY + SAFE) / PAGE_H)) : 1;
+    m.spilled.forEach(function(el){ el.classList.add('spill'); });
+    var over = m.spilled.length > 0;
+    var msg = pages > 1 ? 'Runs onto ' + pages + ' pages' : (m.wide ? 'Some text runs off the page' : 'Fits on 1 page');
+    fitEl.classList.toggle('over', over);
+    if (fitText.textContent !== msg) fitText.textContent = msg;   /* only announce real changes */
+    fitShow.hidden = !over;
     wrap.style.height = (page.offsetHeight * scale) + 'px';
   }
+  fitShow.addEventListener('click', function(){
+    var first = page.querySelector('.spill'); if (!first) return;
+    var smooth = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    first.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+  });
   window.addEventListener('resize', function(){ fit(); checkOverflow(); });
   new ResizeObserver(function(){ wrap.style.height = (page.offsetHeight * scale) + 'px'; }).observe(page);
 
@@ -630,11 +671,12 @@
     n = n.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-');
     return (n || 'resume') + '-resume.pdf';
   }
-  async function deliver(blob, name){
+  async function deliver(blob, name, note){
+    note = note || '';
     var dl = null;
     try { if (window.claude && typeof window.claude.use === 'function') dl = await window.claude.use('downloads'); } catch (err) { dl = null; }
     if (dl){
-      try { await dl.save({ filename: name, data: blob }); toast('PDF saved'); }
+      try { await dl.save({ filename: name, data: blob }); toast('PDF saved' + note); }
       catch (err){ if (!err || err.code !== 'declined') toast('The PDF could not be saved here. Try Print instead.'); }
       return;
     }
@@ -642,19 +684,23 @@
     var a = document.createElement('a'); a.href = url; a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
-    toast('PDF downloaded');
+    toast('PDF downloaded' + note);
   }
   async function exportPDF(){
     if (!window.html2canvas || !window.jspdf){ toast('The PDF engine did not load. Check your connection, or use Print.'); return; }
     btnPdf.disabled = true; var label = btnPdf.lastChild.textContent; btnPdf.lastChild.textContent = 'Preparing…';
     if (document.activeElement) document.activeElement.blur();
     picker.classList.remove('open');
+    checkOverflow();
+    var pageCount = pages;
     document.body.classList.add('exporting');
     var prevT = wrap.style.transform, sx = window.scrollX, sy = window.scrollY;
     wrap.style.transform = 'none'; window.scrollTo(0, 0);
     try {
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
-      var canvas = await html2canvas(page, { scale: 3, useCORS: true, backgroundColor: '#ffffff', logging: false, width: PAGE_W, windowWidth: PAGE_W, scrollX: 0, scrollY: 0 });
+      var opts = { scale: 3, useCORS: true, backgroundColor: '#ffffff', logging: false, width: PAGE_W, windowWidth: PAGE_W, scrollX: 0, scrollY: 0 };
+      if (pageCount === 1) opts.height = PAGE_H;   /* content fits: capture exactly one A4 page */
+      var canvas = await html2canvas(page, opts);
       var pdf = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait', compress: true });
       var pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
       var sliceH = Math.round(canvas.width * ph / pw);   /* canvas pixels per PDF page */
@@ -669,7 +715,7 @@
         first = false; y += sliceH;
       }
       var blob = pdf.output('blob');
-      await deliver(blob, fileName());
+      await deliver(blob, fileName(), pageCount > 1 ? ' (' + pageCount + ' pages)' : '');
     } catch (err){
       toast('Could not build the PDF. Try Print, then “Save as PDF”.');
     } finally {

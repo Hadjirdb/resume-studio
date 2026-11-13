@@ -724,6 +724,83 @@
     setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
     toast('PDF downloaded' + note);
   }
+  /* ---------- ATS text layer ----------
+     The PDF page is a picture, which applicant tracking systems cannot read. So every
+     line of text is also written into the PDF as real text, invisible and laid exactly
+     over the same spot, in reading order: header, contact, experience, education,
+     interests, awards, skills. Parsers, search and copy-paste all read it. */
+  var WINANSI = /[\x20-\x7E\xA0-\xFF\u2013\u2014\u2018\u2019\u201A\u201C\u201D\u201E\u2020\u2021\u2022\u2026\u2030\u2039\u203A\u20AC\u2122\u0152\u0153\u0160\u0161\u0178\u017D\u017E\u0192\u02C6\u02DC]/;
+  function pdfSafe(s){
+    /* the standard PDF font covers Western European text; anything else falls back to its plain letters */
+    return Array.from(s.replace(/\s+/g, ' ')).map(function(ch){
+      if (WINANSI.test(ch)) return ch;
+      var plain = ch.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+      return Array.from(plain).every(function(c){ return WINANSI.test(c); }) ? plain : '';
+    }).join('').trim();
+  }
+  function collectText(){
+    var pr = page.getBoundingClientRect(), items = [];
+    function linesOf(el, suffix){
+      var size = parseFloat(getComputedStyle(el).fontSize) || 9;
+      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), node, words = [];
+      while ((node = walker.nextNode())){
+        var re = /\S+/g, m;
+        while ((m = re.exec(node.data))){
+          var rg = document.createRange(); rg.setStart(node, m.index); rg.setEnd(node, m.index + m[0].length);
+          var r = rg.getClientRects()[0]; if (!r) continue;
+          words.push({ t: m[0], x: r.left - pr.left, r: r.right - pr.left, top: r.top - pr.top, h: r.height });
+        }
+      }
+      var out = [], line = null;
+      words.forEach(function(w){
+        if (line && Math.abs(w.top - line.top) < w.h * 0.5){
+          /* words that touch (a bold phrase followed by a comma) join without a space */
+          line.t += (w.x - line.r > size * 0.12 ? ' ' : '') + w.t; line.r = Math.max(line.r, w.r);
+        }
+        else { if (line) out.push(line); line = { t: w.t, x: w.x, r: w.r, top: w.top, h: w.h, size: size }; }
+      });
+      if (line) out.push(line);
+      if (out.length && suffix) out[out.length - 1].t += suffix;
+      items.push.apply(items, out);
+    }
+    var chips = page.querySelectorAll('.chip'), lastChip = chips[chips.length - 1];
+    var logos = Array.prototype.filter.call(page.querySelectorAll('.logo img'), function(im){ return im.alt && im.alt !== 'Logo'; });
+    var lastLogo = logos[logos.length - 1];
+    page.querySelectorAll('[contenteditable], .logo img').forEach(function(el){
+      if (el.tagName === 'IMG'){
+        /* tool logos carry keywords an ATS should see: SQL Server, PostgreSQL... */
+        if (logos.indexOf(el) < 0) return;
+        var r = el.getBoundingClientRect();
+        items.push({ t: el.alt + (el === lastLogo ? '' : ','), x: r.left - pr.left, r: r.right - pr.left, top: r.top - pr.top, h: r.height, size: 6 });
+        return;
+      }
+      if (!el.textContent.trim()) return;
+      linesOf(el, el.classList.contains('chip') && el !== lastChip ? ',' : '');
+    });
+    return items;
+  }
+  function addTextLayer(pdf, items, pagePx, k){
+    pdf.setFont('helvetica', 'normal');
+    items.forEach(function(it){
+      var pg = Math.floor((it.top + it.h / 2) / pagePx);
+      if (pg < 0 || pg >= pdf.getNumberOfPages()) return;
+      var text = pdfSafe(it.t); if (!text) return;
+      pdf.setPage(pg + 1);
+      pdf.setFontSize(it.size * k);
+      /* stretch the run to the visible line width so selections line up with what you see */
+      var natural = pdf.getTextWidth(text), target = (it.r - it.x) * k;
+      var hs = natural > 0 ? Math.max(0.5, Math.min(2, target / natural)) : 1;
+      pdf.text(text, it.x * k, (it.top + it.h / 2 - pg * pagePx) * k, { baseline: 'middle', renderingMode: 'invisible', horizontalScale: hs });
+    });
+    pdf.setPage(1);
+  }
+  function setMeta(pdf){
+    var txt = function(sel){ var el = page.querySelector(sel); return el ? pdfSafe(el.textContent) : ''; };
+    var name = txt('.name'), role = txt('.role');
+    var skills = Array.prototype.map.call(page.querySelectorAll('.skill .n'), function(n){ return pdfSafe(n.textContent); }).filter(Boolean);
+    pdf.setProperties({ title: (name ? name + ' - ' : '') + 'Resume', author: name, subject: role, keywords: skills.join(', '), creator: 'Resume Studio' });
+  }
+
   async function exportPDF(){
     if (!window.html2canvas || !window.jspdf){ toast('The PDF engine did not load. Check your connection, or use Print.'); return; }
     btnPdf.disabled = true; var label = btnPdf.lastChild.textContent; btnPdf.lastChild.textContent = 'Preparing…';
@@ -747,6 +824,7 @@
       var opts = { scale: 3, useCORS: true, backgroundColor: '#ffffff', logging: false, width: PAGE_W, windowWidth: PAGE_W, scrollX: 0, scrollY: 0,
         onclone: function(doc){ if (photo){ var a = doc.getElementById('avatar'); a.style.backgroundImage = 'none'; a.style.backgroundColor = '#ffffff'; } } };
       if (pageCount === 1) opts.height = PAGE_H;   /* content fits: capture exactly one A4 page */
+      var textItems = collectText();   /* measured in the same layout the picture is taken from */
       var canvas = await html2canvas(page, opts);
       var pdf = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait', compress: true });
       var pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
@@ -766,6 +844,8 @@
         if (first && photo){ var k = pw / PAGE_W; pdf.addImage(photo, 'JPEG', avBox.x * k, avBox.y * k, avBox.w * k, avBox.h * k, undefined, 'FAST'); }
         first = false; y += sliceH;
       }
+      addTextLayer(pdf, textItems, sliceH / opts.scale, pw / PAGE_W);
+      setMeta(pdf);
       var blob = pdf.output('blob');
       await deliver(blob, fileName(), pageCount > 1 ? ' (' + pageCount + ' pages)' : '');
     } catch (err){

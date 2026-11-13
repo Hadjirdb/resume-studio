@@ -509,11 +509,49 @@
     fr.onload = function(){ cb(fr.result); };
     fr.readAsDataURL(file);
   }
+  function loadImage(url){
+    return new Promise(function(res, rej){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = rej; im.src = url; });
+  }
+  /* Centre-crop to a square (what the round frame shows) and shrink in halving
+     steps, which keeps faces and hair clean instead of jagged. */
+  function squarePhoto(im, size){
+    var w = im.naturalWidth, h = im.naturalHeight, s = Math.min(w, h);
+    var c = document.createElement('canvas'); c.width = c.height = s;
+    var cx = c.getContext('2d'); cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, s, s);
+    cx.drawImage(im, (w - s) / 2, (h - s) / 2, s, s, 0, 0, s, s);
+    while (c.width / 2 >= size){
+      var n = document.createElement('canvas'); n.width = n.height = Math.round(c.width / 2);
+      var nx = n.getContext('2d'); nx.imageSmoothingQuality = 'high'; nx.drawImage(c, 0, 0, n.width, n.height); c = n;
+    }
+    var out = document.createElement('canvas'); out.width = out.height = Math.min(size, c.width);
+    var ox = out.getContext('2d'); ox.imageSmoothingQuality = 'high'; ox.drawImage(c, 0, 0, out.width, out.height);
+    return out;
+  }
+  /* The photo as a circle on white, ready to sit on the white page in the PDF */
+  function roundPhoto(sq){
+    var c = document.createElement('canvas'); c.width = c.height = sq.width;
+    var x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, c.width, c.height);
+    x.beginPath(); x.arc(c.width / 2, c.width / 2, c.width / 2, 0, Math.PI * 2); x.clip();
+    x.drawImage(sq, 0, 0);
+    return c.toDataURL('image/jpeg', 0.92);
+  }
+  function avatarURL(){
+    var m = (document.getElementById('avatar').style.backgroundImage || '').match(/^url\(["']?(.*?)["']?\)$/);
+    return m ? m[1] : null;
+  }
   photoFile.addEventListener('change', function(){
-    readFile(photoFile.files[0], function(url){
-      document.getElementById('avatar').style.backgroundImage = 'url("' + url + '")';
-      photoFile.value = ''; afterChange();
-    });
+    var file = photoFile.files[0]; photoFile.value = '';
+    if (!file) return;
+    if (file.type && !/^image\//.test(file.type)){ toast('Please pick an image file.'); return; }
+    var url = URL.createObjectURL(file);
+    loadImage(url).then(function(im){
+      var data = squarePhoto(im, 800).toDataURL('image/jpeg', 0.9);
+      document.getElementById('avatar').style.backgroundImage = 'url("' + data + '")';
+      if (Math.min(im.naturalWidth, im.naturalHeight) < 300) toast('This photo is small, so it may look soft. A larger photo will print sharper.');
+      afterChange();
+    }, function(){
+      toast('That image could not be opened. Try a JPG or PNG.');
+    }).then(function(){ URL.revokeObjectURL(url); });
   });
   logoFile.addEventListener('change', function(){
     readFile(logoFile.files[0], function(url){
@@ -698,20 +736,34 @@
     wrap.style.transform = 'none'; window.scrollTo(0, 0);
     try {
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
-      var opts = { scale: 3, useCORS: true, backgroundColor: '#ffffff', logging: false, width: PAGE_W, windowWidth: PAGE_W, scrollX: 0, scrollY: 0 };
+      /* The page snapshot gives a 45px photo only ~135px, so it goes soft. Instead the
+         photo is left out of the snapshot and placed in the PDF as its own sharp image. */
+      var photo = null, avBox = null, photoUrl = avatarURL();
+      if (photoUrl){
+        var pr = page.getBoundingClientRect(), ar = page.querySelector('#avatar').getBoundingClientRect();
+        avBox = { x: ar.left - pr.left, y: ar.top - pr.top, w: ar.width, h: ar.height };
+        try { photo = roundPhoto(squarePhoto(await loadImage(photoUrl), 540)); } catch (e) { photo = null; }
+      }
+      var opts = { scale: 3, useCORS: true, backgroundColor: '#ffffff', logging: false, width: PAGE_W, windowWidth: PAGE_W, scrollX: 0, scrollY: 0,
+        onclone: function(doc){ if (photo){ var a = doc.getElementById('avatar'); a.style.backgroundImage = 'none'; a.style.backgroundColor = '#ffffff'; } } };
       if (pageCount === 1) opts.height = PAGE_H;   /* content fits: capture exactly one A4 page */
       var canvas = await html2canvas(page, opts);
       var pdf = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait', compress: true });
       var pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
       var sliceH = Math.round(canvas.width * ph / pw);   /* canvas pixels per PDF page */
+      /* exactly as many pages as the content needs: A4 rounding leaves the snapshot a
+         pixel taller than one slice, which used to add a near-blank second page */
       var y = 0, first = true;
-      while (y < canvas.height){
+      for (var pg = 0; pg < pageCount; pg++){
         var h = Math.min(sliceH, canvas.height - y);
+        if (h <= 0) break;
         var c = document.createElement('canvas'); c.width = canvas.width; c.height = sliceH;
         var ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
         ctx.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
         if (!first) pdf.addPage();
-        pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pw, ph, undefined, 'FAST');
+        /* lossless PNG keeps text edges crisp and comes out smaller than the old JPEG */
+        pdf.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, pw, ph, undefined, 'FAST');
+        if (first && photo){ var k = pw / PAGE_W; pdf.addImage(photo, 'JPEG', avBox.x * k, avBox.y * k, avBox.w * k, avBox.h * k, undefined, 'FAST'); }
         first = false; y += sliceH;
       }
       var blob = pdf.output('blob');
